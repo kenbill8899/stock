@@ -23,19 +23,19 @@ try:
     # 清除完全是空值的欄位與列
     df = df.dropna(how='all', axis=1).dropna(how='all', axis=0)
 
-    # 4. 智慧型欄位搜尋（模糊比對）
-    date_col = None
-    leverage_profit_col = None
-    underlying_profit_col = None
-
+    # 4. 🧠 智慧型欄位重命名（在最源頭就正名，徹底避免 KeyError）
+    rename_dict = {}
     for col in df.columns:
         col_str = str(col).strip()
         if "日期" in col_str:
-            date_col = col
+            rename_dict[col] = "日期"
         elif "正二" in col_str and "損益" in col_str:
-            leverage_profit_col = col
+            rename_dict[col] = "正二當日損益"
         elif "原型" in col_str and "損益" in col_str:
-            underlying_profit_col = col
+            rename_dict[col] = "原型當日損益"
+
+    # 執行重命名
+    df = df.rename(columns=rename_dict)
 
     # 顯示原始數據方便排錯
     col1, col2 = st.columns([1, 1])
@@ -47,40 +47,37 @@ try:
     with col2:
         st.subheader("📈 損益走勢曲線圖")
         
-        if date_col and leverage_profit_col and underlying_profit_col:
+        # 5. 檢查正名後的關鍵欄位是否都存在
+        if "日期" in df.columns and "正二當日損益" in df.columns and "原型當日損益" in df.columns:
             
-            # 建立要畫圖的 DataFrame
-            chart_df = pd.DataFrame({
-                "日期": df[date_col],
-                "正二當日損益": df[leverage_profit_col],
-                "原型當日損益": df[underlying_profit_col]
-            })
+            # 建立要畫圖的乾淨 DataFrame
+            chart_df = df[["日期", "正二當日損益", "原型當日損益"]].copy()
             
-            # 清除日期或數據為空的無效列
+            # 清除日期為空的無效列
             chart_df = chart_df.dropna(subset=["日期"])
             
-            # 🌟 核心修正：強力清除所有非數字雜質，強制轉為 float 數字
+            # 🌟 核心數值清理：扒光 % 符號、去除前後空白，轉換成數字
             for col in ["正二當日損益", "原型當日損益"]:
-                # 先把欄位轉為純字串，拔掉 % 符號、去除前後空白
+                # 統一轉成字串進行文字清理
                 chart_df[col] = chart_df[col].astype(str).str.replace('%', '', regex=False).str.strip()
-                # 強制轉換成數字，遇到真的無法轉換的文字就變成 NaN
+                # 強制轉換成數字，遇到怪字元就變成 NaN
                 chart_df[col] = pd.to_numeric(chart_df[col], errors='coerce')
             
-            # 再次確保沒有 NaN 導致斷線
+            # 濾除轉換失敗的 NaN 列，確保圖表連續
             chart_df = chart_df.dropna(subset=["正二當日損益", "原型當日損益"])
 
-            # 設定 X 軸
+            # 設定 X 軸為日期
             chart_df = chart_df.set_index("日期")
             
-            # 檢查是否還有剩餘數據可畫
+            # 確保有數據才畫圖
             if not chart_df.empty:
-                # 繪製曲線圖
                 st.line_chart(chart_df, use_container_width=True)
             else:
-                st.warning("数据經清理後皆非有效數值，無法繪圖。")
+                st.warning("⚠️ 數據經清理後無有效數值可繪製圖表。")
             
         else:
-            st.warning("⚠️ 無法自動對齊欄位，請檢查試算表標頭。")
+            st.warning("⚠️ 無法自動對齊欄位，請檢查試算表第三行的文字是否包含『日期』、『正二...損益』、『原型...損益』。")
+            st.write("目前偵測到的標頭欄位有：", list(df.columns))
 
 except Exception as e:
     st.error(f"🚨 程式執行時發生錯誤：{e}")
