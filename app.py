@@ -1,22 +1,25 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
+import pandas as pd
 
 st.title("📊 投資回測數據看板")
 
-# 建立 Google Sheets 連線
-conn = st.connection("gsheets", type="sheets")
+# 1. 直接從 Secrets 讀取網址
+try:
+    spreadsheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    
+    # 2. 將標準試算表網址轉換成 CSV 下載連結（最穩定的抓取方式）
+    csv_url = spreadsheet_url.replace("/edit#gid=", "/export?format=csv&gid=")
+    if "/edit?" in spreadsheet_url:
+        # 處理沒有特定 gid 或網址帶有其他參數的情況
+        csv_url = spreadsheet_url.split("/edit")[0] + "/export?format=csv"
 
-# 讀取數據（可以指定工作表名稱，例如 worksheet="工作表1"）
-# ttl="10m" 代表快取 10 分鐘，避免頻繁抓取導致速度變慢
-df = conn.read(worksheet="Sheet1", ttl="10m")
+    # 3. 直接用 pandas 讀取，繞過 st.connection
+    df = pd.read_csv(csv_url)
 
-# 顯示原始資料表
-st.subheader("原始數據")
-st.dataframe(df)
+    # 顯示原始資料表
+    st.subheader("原始數據")
+    st.dataframe(df)
 
-# 💡 進階：如果你想在 Streamlit 重現你圖表中的「正二與原型當日損益」折線圖
-if "正二當日損益" in df.columns and "正一當日損益" in df.columns:
-    st.subheader("損益走勢圖")
-    # 將日期設為索引方便畫圖
-    chart_data = df.set_index("正二投入日期")[["正二當日損益", "原型當日損益"]]
-    st.line_chart(chart_data)
+except Exception as e:
+    st.error(f"讀取資料時發生錯誤：{e}")
+    st.info("請確認你的 .streamlit/secrets.toml 或 Streamlit 後台的 Secrets 設定格式是否正確。")
